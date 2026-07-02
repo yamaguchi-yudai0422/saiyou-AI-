@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noesia 採用補助システム</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app">
+  <header class="header">
+    <div class="header-inner">
+      <button id="settings-btn" class="settings-btn" title="API設定">&#9881;</button>
+      <div class="header-logo">N</div>
+      <div>
+        <h1 class="header-title">Noesia</h1>
+        <p class="header-sub">採用補助システム</p>
+      </div>
+      <div id="api-badge" class="api-badge api-badge--none">APIキー未設定</div>
+    </div>
+  </header>
+
+  <div class="mode-tabs">
+    <button id="tab-interviewer" class="mode-tab mode-tab--active">面接官モード</button>
+    <button id="tab-applicant" class="mode-tab">志望者モード</button>
+  </div>
+
+  <!-- ── 面接官モード ──────────────────────────────────────────────────── -->
+  <div id="interviewer-mode">
+    <div class="main-grid">
+
+      <div class="card">
+        <h2 class="card-title">会社情報・求める人材 <span class="card-title-sub">（任意・参考情報）</span></h2>
+        <textarea
+          id="company-info"
+          class="textarea"
+          rows="4"
+          placeholder="例）&#10;・デザイン会社。クリエイティブさと主体性を大切にしている&#10;・今回はWebディレクター候補。コミュニケーション力重視&#10;・少数精鋭のチームなので自走できる人が合う"
+        ></textarea>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">履歴書</h2>
+          <button id="paste-resume" class="btn-paste">貼り付け</button>
+        </div>
+        <textarea id="resume" class="textarea" placeholder="受け取った履歴書をここに貼り付けてください"></textarea>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">面接ログ</h2>
+        <textarea
+          id="interview-log"
+          class="textarea log-textarea"
+          placeholder="音声認識またはテキスト入力で会話が追加されます&#10;&#10;例）&#10;面接官：自己紹介をお願いします。&#10;志望者：山田太郎です。"
+        ></textarea>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">音声入力</h2>
+
+        <div class="audio-source-row">
+          <div class="audio-source-label">
+            <span class="source-tag">面接官</span>
+            <span class="source-desc">マイク</span>
+          </div>
+          <select id="mic-select" class="select flex-select">
+            <option value="">読み込み中...</option>
+          </select>
+        </div>
+
+        <div class="audio-source-row">
+          <div class="audio-source-label">
+            <span class="source-tag">志望者</span>
+            <span class="source-desc">ZoomやMeetの音声が出ているデバイス</span>
+          </div>
+          <select id="device-select" class="select flex-select">
+            <option value="">読み込み中...</option>
+          </select>
+          <p class="device-hint">↑ スピーカーの「ループバック」を選択してください</p>
+        </div>
+
+        <div class="voice-controls">
+          <button id="voice-start" class="btn btn-accent">録音開始</button>
+          <button id="voice-stop" class="btn btn-secondary hidden">録音停止</button>
+        </div>
+        <div id="voice-status" class="voice-status"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">テキスト入力（手動補正用）</h2>
+        <div class="text-input-section">
+          <div class="speaker-row">
+            <label class="label" for="speaker">発言者</label>
+            <select id="speaker" class="select">
+              <option value="面接官">面接官</option>
+              <option value="志望者">志望者</option>
+            </select>
+          </div>
+          <textarea id="text-input" class="textarea" rows="3" placeholder="発言内容を入力してください"></textarea>
+          <button id="send-btn" class="btn btn-secondary">送信</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="end-bar">
+      <button id="end-btn" class="btn btn-danger">面接終了</button>
+    </div>
+
+    <section id="final-section" class="final-section hidden">
+      <div class="card final-card">
+        <h2 class="card-title">Noesia の採点結果</h2>
+        <div id="final-loading" class="final-loading">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <p>Noesia が採点しています...</p>
+        </div>
+        <div id="final-content" class="hidden">
+          <div id="verdict-badge" class="verdict-badge"></div>
+          <div id="final-reply" class="final-reply"></div>
+        </div>
+        <div id="final-error" class="final-error hidden"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── 志望者モード ──────────────────────────────────────────────────── -->
+  <div id="applicant-mode" class="hidden">
+    <div class="main-grid">
+
+      <div class="card">
+        <h2 class="card-title">企業情報</h2>
+        <textarea
+          id="app-company-info"
+          class="textarea"
+          rows="4"
+          placeholder="例）&#10;・IT系スタートアップ。少数精鋭でスピード感がある&#10;・服装自由、フルリモート可&#10;・年功序列ではなく成果主義&#10;・事業内容：BtoB SaaSの開発・運営"
+        ></textarea>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">会話ログ</h2>
+        <textarea
+          id="app-conversation-log"
+          class="textarea log-textarea"
+          placeholder="音声認識またはテキスト入力で会話が追加されます&#10;&#10;例）&#10;企業担当者：弊社はスピード感を大切にしています。&#10;あなた：具体的にどのくらいのサイクルで意思決定されますか？"
+        ></textarea>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">音声入力</h2>
+
+        <div class="audio-source-row">
+          <div class="audio-source-label">
+            <span class="source-tag source-tag--you">あなた</span>
+            <span class="source-desc">マイク</span>
+          </div>
+          <select id="app-mic-select" class="select flex-select">
+            <option value="">読み込み中...</option>
+          </select>
+        </div>
+
+        <div class="audio-source-row">
+          <div class="audio-source-label">
+            <span class="source-tag source-tag--company">企業担当者</span>
+            <span class="source-desc">ZoomやMeetの音声が出ているデバイス</span>
+          </div>
+          <select id="app-device-select" class="select flex-select">
+            <option value="">読み込み中...</option>
+          </select>
+          <p class="device-hint">↑ スピーカーの「ループバック」を選択してください</p>
+        </div>
+
+        <div class="voice-controls">
+          <button id="app-voice-start" class="btn btn-accent">録音開始</button>
+          <button id="app-voice-stop" class="btn btn-secondary hidden">録音停止</button>
+        </div>
+        <div id="app-voice-status" class="voice-status"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">テキスト入力（手動補正用）</h2>
+        <div class="text-input-section">
+          <div class="speaker-row">
+            <label class="label" for="app-speaker">発言者</label>
+            <select id="app-speaker" class="select">
+              <option value="あなた">あなた</option>
+              <option value="企業担当者">企業担当者</option>
+            </select>
+          </div>
+          <textarea id="app-text-input" class="textarea" rows="3" placeholder="発言内容を入力してください"></textarea>
+          <button id="app-send-btn" class="btn btn-secondary">送信</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="end-bar">
+      <button id="app-end-btn" class="btn btn-danger">終了して企業を評価する</button>
+    </div>
+
+    <section id="app-final-section" class="final-section hidden">
+      <div class="card final-card">
+        <h2 class="card-title">Noesia の企業評価</h2>
+        <div id="app-final-loading" class="final-loading">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <p>Noesia が評価しています...</p>
+        </div>
+        <div id="app-final-content" class="hidden">
+          <div id="app-verdict-badge" class="verdict-badge"></div>
+          <div id="app-final-reply" class="final-reply"></div>
+        </div>
+        <div id="app-final-error" class="final-error hidden"></div>
+      </div>
+    </section>
+  </div>
+
+</div>
+
+<!-- API設定モーダル -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h2 class="modal-title">API設定</h2>
+
+    <div class="form-group">
+      <label class="form-label">設定名</label>
+      <input id="cfg-name" class="form-input" type="text" placeholder="例：山田商事">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Noesia API キー <span class="label-sub">（採点用）</span></label>
+      <div class="input-row">
+        <input id="cfg-key" class="form-input" type="password" placeholder="sk_...">
+        <button id="cfg-toggle" class="toggle-btn" type="button">表示</button>
+      </div>
+    </div>
+
+    <div id="cfg-msg" class="cfg-msg hidden"></div>
+
+    <div class="modal-buttons">
+      <button id="cfg-cancel" class="btn btn-secondary">キャンセル</button>
+      <button id="cfg-save" class="btn btn-accent">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
