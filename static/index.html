@@ -98,7 +98,7 @@
               <option value="志望者">志望者</option>
             </select>
           </div>
-          <textarea id="text-input" class="textarea" rows="3" placeholder="発言内容を入力してください"></textarea>
+          <textarea id="text-input" class="textarea" rows="3" placeholder="発言内容を入力してください（Ctrl+Enterで送信）"></textarea>
           <button id="send-btn" class="btn btn-secondary">送信</button>
         </div>
       </div>
@@ -106,6 +106,7 @@
     </div>
 
     <div class="end-bar">
+      <button id="clear-btn" class="btn btn-secondary">入力をクリア</button>
       <button id="end-btn" class="btn btn-danger">面接終了</button>
     </div>
 
@@ -119,6 +120,12 @@
         <div id="final-content" class="hidden">
           <div id="verdict-badge" class="verdict-badge"></div>
           <div id="final-reply" class="final-reply"></div>
+          <p id="final-tokens" class="tokens-note"></p>
+          <p class="verdict-note">これは Noesia の人格による意見です。最終的な判断はあなた自身で行ってください。</p>
+          <div class="result-actions">
+            <button id="copy-result" class="btn btn-secondary">結果をコピー</button>
+            <button id="save-result" class="btn btn-secondary">ログと結果を保存</button>
+          </div>
         </div>
         <div id="final-error" class="final-error hidden"></div>
       </div>
@@ -189,7 +196,7 @@
               <option value="企業担当者">企業担当者</option>
             </select>
           </div>
-          <textarea id="app-text-input" class="textarea" rows="3" placeholder="発言内容を入力してください"></textarea>
+          <textarea id="app-text-input" class="textarea" rows="3" placeholder="発言内容を入力してください（Ctrl+Enterで送信）"></textarea>
           <button id="app-send-btn" class="btn btn-secondary">送信</button>
         </div>
       </div>
@@ -197,6 +204,7 @@
     </div>
 
     <div class="end-bar">
+      <button id="app-clear-btn" class="btn btn-secondary">入力をクリア</button>
       <button id="app-end-btn" class="btn btn-danger">終了して企業を評価する</button>
     </div>
 
@@ -210,6 +218,12 @@
         <div id="app-final-content" class="hidden">
           <div id="app-verdict-badge" class="verdict-badge"></div>
           <div id="app-final-reply" class="final-reply"></div>
+          <p id="app-final-tokens" class="tokens-note"></p>
+          <p class="verdict-note">これは Noesia の人格による意見です。最終的な判断はあなた自身で行ってください。</p>
+          <div class="result-actions">
+            <button id="app-copy-result" class="btn btn-secondary">結果をコピー</button>
+            <button id="app-save-result" class="btn btn-secondary">ログと結果を保存</button>
+          </div>
         </div>
         <div id="app-final-error" class="final-error hidden"></div>
       </div>
@@ -239,6 +253,7 @@
     <div id="cfg-msg" class="cfg-msg hidden"></div>
 
     <div class="modal-buttons">
+      <button id="cfg-test" class="btn btn-secondary">接続テスト</button>
       <button id="cfg-cancel" class="btn btn-secondary">キャンセル</button>
       <button id="cfg-save" class="btn btn-accent">保存</button>
     </div>

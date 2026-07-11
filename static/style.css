@@ -241,6 +241,18 @@ body {
 /* ── Verdict variants for applicant mode ── */
 .verdict-badge.match    { background: var(--hire-bg);   color: var(--hire-text); }
 .verdict-badge.no-match { background: var(--reject-bg); color: var(--reject-text); }
+.verdict-badge.unknown  { background: #e2e8f0; color: #475569; }
+
+/* ── Result extras ── */
+.verdict-note { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
+.tokens-note  { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+.result-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+/* ── Armed (2度押し確認中) button state ── */
+.btn-armed { box-shadow: 0 0 0 3px rgba(245, 158, 11, .45); }
+
+/* ── Settings message: info ── */
+.cfg-msg.info { background: #e0f2fe; color: #0369a1; }
 
 /* ── Utility ── */
 .hidden { display: none !important; }

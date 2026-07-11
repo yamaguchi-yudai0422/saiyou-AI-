@@ -81,45 +81,59 @@ def list_loopback_devices() -> list:
     return result
 
 
-def _recognize_loop(source, speaker: str, loop, callback, stop_event: threading.Event):
+def _recognize_loop(source, speaker: str, loop, callback, on_error, stop_event: threading.Event):
+    def report_error(message: str):
+        if on_error is not None:
+            asyncio.run_coroutine_threadsafe(on_error(message), loop)
+
     r = sr.Recognizer()
     r.dynamic_energy_threshold = True
-    with source:
-        try:
-            r.adjust_for_ambient_noise(source, duration=0.5)
-        except Exception:
-            pass
-        while not stop_event.is_set():
+    try:
+        with source:
             try:
-                audio = r.listen(source, timeout=1.0, phrase_time_limit=15)
-                text  = r.recognize_google(audio, language="ja-JP")
-                if text.strip():
-                    asyncio.run_coroutine_threadsafe(callback(speaker, text.strip()), loop)
-            except sr.WaitTimeoutError:
-                continue
-            except sr.UnknownValueError:
-                continue
+                r.adjust_for_ambient_noise(source, duration=0.5)
             except Exception:
-                break
+                pass
+            while not stop_event.is_set():
+                try:
+                    audio = r.listen(source, timeout=1.0, phrase_time_limit=15)
+                    text  = r.recognize_google(audio, language="ja-JP")
+                    if text.strip():
+                        asyncio.run_coroutine_threadsafe(callback(speaker, text.strip()), loop)
+                except sr.WaitTimeoutError:
+                    continue
+                except sr.UnknownValueError:
+                    continue
+                except sr.RequestError:
+                    report_error(f"音声認識サービスに接続できませんでした（{speaker}側）。ネットワークを確認してください。")
+                    break
+                except Exception as e:
+                    report_error(f"{speaker}側の音声認識が停止しました：{e}")
+                    break
+    except Exception as e:
+        report_error(f"{speaker}側の音声デバイスを開けませんでした：{e}")
 
 
-async def run_transcription(loopback_device: int, on_result, stop_event: asyncio.Event, mic_device: int = None, mic_speaker: str = "面接官", loopback_speaker: str = "志望者"):
+async def run_transcription(loopback_device: int, on_result, stop_event: asyncio.Event, mic_device: int = None, mic_speaker: str = "面接官", loopback_speaker: str = "志望者", on_error=None):
     loop        = asyncio.get_event_loop()
     thread_stop = threading.Event()
 
     mic_thread = threading.Thread(
         target=_recognize_loop,
-        args=(_AudioSource(mic_device), mic_speaker, loop, on_result, thread_stop),
+        args=(_AudioSource(mic_device), mic_speaker, loop, on_result, on_error, thread_stop),
         daemon=True,
     )
     desktop_thread = threading.Thread(
         target=_recognize_loop,
-        args=(_AudioSource(loopback_device), loopback_speaker, loop, on_result, thread_stop),
+        args=(_AudioSource(loopback_device), loopback_speaker, loop, on_result, on_error, thread_stop),
         daemon=True,
     )
 
     mic_thread.start()
     desktop_thread.start()
 
-    await stop_event.wait()
-    thread_stop.set()
+    try:
+        await stop_event.wait()
+    finally:
+        # キャンセルされても認識スレッドを確実に止める
+        thread_stop.set()
