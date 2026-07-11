@@ -1,3 +1,4 @@
+import array
 import asyncio
 import threading
 import speech_recognition as sr
@@ -11,6 +12,25 @@ except ImportError:
 RATE  = 16000
 CHUNK = 1024
 
+# PortAudio の初期化・終了はスレッドセーフでないため、
+# 複数スレッドから同時に呼ばれるとクラッシュする。ロックで直列化する。
+_pa_lock = threading.Lock()
+
+
+class _MonoStream:
+    """多チャンネルの生ストリームを読み出し時にモノラル化するラッパー"""
+
+    def __init__(self, stream, channels):
+        self._stream   = stream
+        self._channels = channels
+
+    def read(self, size, exception_on_overflow=False):
+        data = self._stream.read(size, exception_on_overflow=False)
+        if self._channels == 1:
+            return data
+        samples = array.array("h", data)
+        return samples[0::self._channels].tobytes()
+
 
 class _AudioSource(sr.AudioSource):
     """pyaudiowpatch ベースの汎用 AudioSource"""
@@ -20,29 +40,53 @@ class _AudioSource(sr.AudioSource):
         self.SAMPLE_RATE  = RATE
         self.SAMPLE_WIDTH = 2
         self.CHUNK        = CHUNK
-        self.pa     = None
-        self.stream = None
+        self.pa      = None
+        self.stream  = None
+        self._raw    = None
 
     def __enter__(self):
-        self.pa = pyaudio.PyAudio()
-        kwargs = dict(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.SAMPLE_RATE,
-            input=True,
-            frames_per_buffer=self.CHUNK,
-        )
-        if self.device_index is not None:
-            kwargs["input_device_index"] = self.device_index
-        self.stream = self.pa.open(**kwargs)
+        with _pa_lock:
+            self.pa = pyaudio.PyAudio()
+            # WASAPI 共有モードはデバイスのネイティブサンプルレートでしか開けないため、
+            # 指定デバイスはデバイス情報のレートを使う（16kHz 固定だと -9997 で失敗する）
+            if self.device_index is not None:
+                info = self.pa.get_device_info_by_index(self.device_index)
+                self.SAMPLE_RATE = int(info.get("defaultSampleRate") or RATE)
+                native_channels  = max(1, int(info.get("maxInputChannels") or 1))
+                attempts = [1] if native_channels == 1 else [1, native_channels]
+            else:
+                attempts = [1]
+
+            last_error = None
+            for channels in attempts:
+                kwargs = dict(
+                    format=pyaudio.paInt16,
+                    channels=channels,
+                    rate=self.SAMPLE_RATE,
+                    input=True,
+                    frames_per_buffer=self.CHUNK,
+                )
+                if self.device_index is not None:
+                    kwargs["input_device_index"] = self.device_index
+                try:
+                    self._raw   = self.pa.open(**kwargs)
+                    self.stream = _MonoStream(self._raw, channels)
+                    break
+                except Exception as e:
+                    last_error = e
+            if self.stream is None:
+                self.pa.terminate()
+                self.pa = None
+                raise last_error
         return self
 
     def __exit__(self, *_):
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-        if self.pa:
-            self.pa.terminate()
+        with _pa_lock:
+            if self._raw:
+                self._raw.stop_stream()
+                self._raw.close()
+            if self.pa:
+                self.pa.terminate()
 
 
 def list_microphone_devices() -> list:
@@ -50,7 +94,7 @@ def list_microphone_devices() -> list:
         return []
     result = []
     try:
-        with pyaudio.PyAudio() as pa:
+        with _pa_lock, pyaudio.PyAudio() as pa:
             wasapi_idx = pa.get_host_api_info_by_type(pyaudio.paWASAPI)["index"]
             for i in range(pa.get_device_count()):
                 d = pa.get_device_info_by_index(i)
@@ -70,7 +114,7 @@ def list_loopback_devices() -> list:
         return []
     result = []
     try:
-        with pyaudio.PyAudio() as pa:
+        with _pa_lock, pyaudio.PyAudio() as pa:
             wasapi_idx = pa.get_host_api_info_by_type(pyaudio.paWASAPI)["index"]
             for i in range(pa.get_device_count()):
                 d = pa.get_device_info_by_index(i)

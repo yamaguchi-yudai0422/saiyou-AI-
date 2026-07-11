@@ -29,7 +29,7 @@ def _error_message(response: httpx.Response) -> str:
     return f"{message}（request_id: {request_id}）" if request_id else message
 
 
-async def call_noesia_api(message: str, context: list, api_key: str, max_tokens: int = 1000) -> dict:
+async def call_noesia_api(message: str, context: list, api_key: str, max_tokens: int = 2000) -> dict:
     last_error = "Noesia API へのリクエストが失敗しました。"
     for attempt in range(3):
         try:
@@ -78,13 +78,15 @@ async def generate_applicant_review(company_info: str, conversation_log: str, ap
 
 async def generate_final_review(company_info: str, resume: str, interview_log: str, api_key: str) -> dict:
     company_block = f"ちなみに、うちの会社についてはこんな感じ。\n{company_info}\n\n" if company_info.strip() else ""
+    # 履歴書をもらわない企業もあるため、未入力なら項目ごと省いて面接内容だけで判断してもらう
+    resume_block  = f"【候補者の履歴書】\n{resume}\n\n" if resume.strip() else ""
     context = [
         {
             "role": "user",
             "content": (
                 "さっき候補者の面接をしたから、記録を見てほしい。\n\n"
                 f"{company_block}"
-                f"【候補者の履歴書】\n{resume if resume.strip() else '（未入力）'}\n\n"
+                f"{resume_block}"
                 f"【面接の流れ】\n{interview_log if interview_log.strip() else '（未入力）'}"
             ),
         }
