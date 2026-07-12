@@ -28,6 +28,7 @@ const deviceSelect   = $('device-select');
 const voiceStart     = $('voice-start');
 const voiceStop      = $('voice-stop');
 const voiceStatus    = $('voice-status');
+const levelStatus    = $('level-status');
 const speakerEl      = $('speaker');
 const textInputEl    = $('text-input');
 const sendBtn        = $('send-btn');
@@ -40,6 +41,7 @@ const appDeviceSelect    = $('app-device-select');
 const appVoiceStart      = $('app-voice-start');
 const appVoiceStop       = $('app-voice-stop');
 const appVoiceStatus     = $('app-voice-status');
+const appLevelStatus     = $('app-level-status');
 const appSpeakerEl       = $('app-speaker');
 const appTextInputEl     = $('app-text-input');
 const appSendBtn         = $('app-send-btn');
@@ -211,11 +213,16 @@ cfgTest.addEventListener('click', async () => {
 
 // ── デバイス一覧 ──────────────────────────────────────────────────────────
 
-function populateSelect(selectEl, items, savedValue, emptyMsg) {
+function populateSelect(selectEl, items, savedValue, emptyMsg, autoLabel) {
   selectEl.innerHTML = '';
   if (!items.length) {
     selectEl.innerHTML = `<option value="">${emptyMsg || 'なし'}</option>`;
     return false;
+  }
+  if (autoLabel) {
+    const opt = document.createElement('option');
+    opt.value = '-1'; opt.textContent = autoLabel;
+    selectEl.appendChild(opt);
   }
   items.forEach(d => {
     const opt = document.createElement('option');
@@ -223,6 +230,8 @@ function populateSelect(selectEl, items, savedValue, emptyMsg) {
     selectEl.appendChild(opt);
   });
   if (savedValue != null) selectEl.value = savedValue;
+  // 保存されていたデバイスが今は存在しない（indexが変わった等）場合は先頭に戻す
+  if (!selectEl.value) selectEl.selectedIndex = 0;
   return true;
 }
 
@@ -240,13 +249,17 @@ async function loadDevices() {
     populateSelect(micSelect,    mics,    config.mic_device,   'マイクが見つかりません');
     populateSelect(appMicSelect, mics,    config.mic_device,   'マイクが見つかりません');
 
-    const hasDevices = populateSelect(deviceSelect,    devices, config.audio_device, 'ループバックデバイスが見つかりません');
-    populateSelect(appDeviceSelect, devices, config.audio_device, 'ループバックデバイスが見つかりません');
+    const AUTO_LABEL = '自動（すべての再生デバイスを監視・推奨）';
+    const hasDevices = populateSelect(deviceSelect,    devices, config.audio_device, 'ループバックデバイスが見つかりません', AUTO_LABEL);
+    populateSelect(appDeviceSelect, devices, config.audio_device, 'ループバックデバイスが見つかりません', AUTO_LABEL);
 
     if (!hasDevices) {
       voiceStart.disabled    = true;
       appVoiceStart.disabled = true;
     }
+
+    micGainCtrl.set(config.mic_gain || 1);
+    loopGainCtrl.set(config.loopback_gain || 1);
   } catch (_) {
     for (const el of [deviceSelect, appDeviceSelect]) {
       el.innerHTML = '<option value="">デバイス取得エラー</option>';
@@ -255,6 +268,40 @@ async function loadDevices() {
     appVoiceStart.disabled = true;
   }
 }
+
+// ── 音量ブースト ──────────────────────────────────────────────────────────
+// 両モードのスライダーを同期し、設定に保存。録音中は WebSocket 経由で即時反映する。
+
+function setupGainPair(sliderIds, valIds, configKey, wsKey) {
+  const sliders = sliderIds.map($);
+  const vals    = valIds.map($);
+  let saveTimer = null;
+
+  function apply(value, save) {
+    sliders.forEach(s => { s.value = value; });
+    vals.forEach(v => { v.textContent = `×${value}`; });
+    if (!save) return;
+    if (ws) { try { ws.send(JSON.stringify({ [wsKey]: Number(value) })); } catch (_) {} }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [configKey]: Number(value) }),
+      }).catch(() => {});
+    }, 400);
+  }
+
+  sliders.forEach(s => s.addEventListener('input', () => apply(s.value, true)));
+  return { set: v => apply(v, false), value: () => sliders[0].value };
+}
+
+const micGainCtrl = setupGainPair(
+  ['mic-gain', 'app-mic-gain'], ['mic-gain-val', 'app-mic-gain-val'],
+  'mic_gain', 'mic_gain');
+const loopGainCtrl = setupGainPair(
+  ['device-gain', 'app-device-gain'], ['device-gain-val', 'app-device-gain-val'],
+  'loopback_gain', 'loopback_gain');
 
 // 選択変更時にすぐ保存し、もう一方のモードのセレクトにも反映する
 function persistDeviceOnChange(configKey, selectEl, mirrorEl) {
@@ -288,10 +335,12 @@ function startVoice(devSel, micSel) {
 
   ws = new WebSocket(
     `ws://${location.host}/ws/transcribe?device=${deviceIndex}${micParam}` +
-    `&mic_speaker=${encodeURIComponent(micSpeaker)}&loopback_speaker=${encodeURIComponent(loopbackSpeaker)}`
+    `&mic_speaker=${encodeURIComponent(micSpeaker)}&loopback_speaker=${encodeURIComponent(loopbackSpeaker)}` +
+    `&mic_gain=${micGainCtrl.value()}&loopback_gain=${loopGainCtrl.value()}`
   );
 
   const statusEl = isInterviewer ? voiceStatus : appVoiceStatus;
+  const levelEl  = isInterviewer ? levelStatus : appLevelStatus;
   const startBtn = isInterviewer ? voiceStart  : appVoiceStart;
   const stopBtn  = isInterviewer ? voiceStop   : appVoiceStop;
 
@@ -308,6 +357,18 @@ function startVoice(devSel, micSel) {
       stopRecording();
       statusEl.textContent = `エラー: ${data.error}`;
       statusEl.className   = 'voice-status error';
+    } else if (data.warn) {
+      // 録音は継続したまま、デバイス選択ミス等のヒントを表示する
+      statusEl.textContent = `⚠ ${data.warn}`;
+      statusEl.className   = 'voice-status warn';
+    } else if (data.status) {
+      statusEl.textContent = data.status;
+      statusEl.className   = 'voice-status active';
+    } else if (data.level) {
+      const bar = p => '▮'.repeat(Math.min(10, Math.ceil(p / 10))).padEnd(10, '▯');
+      levelEl.textContent =
+        `マイク ${bar(data.level.mic)} ${data.level.mic}%　` +
+        `PC音声 ${bar(data.level.loopback)} ${data.level.loopback}%`;
     } else if (data.speaker && data.text) {
       if (currentMode === 'interviewer') {
         appendToLog(data.speaker, data.text);
@@ -341,12 +402,13 @@ function stopRecording() {
     try { ws.close(); } catch (_) {}
     ws = null;
   }
-  for (const [status, start, stop] of [
-    [voiceStatus,    voiceStart,    voiceStop],
-    [appVoiceStatus, appVoiceStart, appVoiceStop],
+  for (const [status, level, start, stop] of [
+    [voiceStatus,    levelStatus,    voiceStart,    voiceStop],
+    [appVoiceStatus, appLevelStatus, appVoiceStart, appVoiceStop],
   ]) {
     status.textContent = '';
     status.className   = 'voice-status';
+    level.textContent  = '';
     start.classList.remove('hidden');
     stop.classList.add('hidden');
   }

@@ -55,7 +55,8 @@
 - API 名称
 - Noesia API キー
 - マイク入力デバイス
-- ループバック音声デバイス
+- ループバック音声デバイス（既定は「自動」＝全再生デバイス監視）
+- 音量ブースト（マイク／PC音声、×1〜×20。録音中もスライダーで即時変更可）
 
 設定内容はローカルの `config.json` に保存されます。
 
@@ -85,16 +86,21 @@
 - Uvicorn
 - pywebview
 - httpx
-- SpeechRecognition
+- faster-whisper（ローカル音声認識）
+- SpeechRecognition（フォールバック用）
 - pyaudiowpatch
+- numpy
 - PyInstaller
 
 ### 音声処理
 
 - WASAPI 経由で Windows の音声デバイスを取得
-- マイクと PC 再生音声を別スレッドで同時に認識
-- 音声認識には `SpeechRecognition` の Google 認識を使用
-- 認識結果は WebSocket でフロントへ反映
+- ループバックは既定で「自動」：すべての再生デバイスを同時監視（通話アプリの出力先がどこでも拾える）
+- マイクと PC 再生音声を別スレッドで同時にキャプチャし、音量ベースで発話単位に分割
+- 音声認識はローカルの faster-whisper を使用。NVIDIA GPU があれば medium（float16・CUDA）、無ければ small（CPU int8）を自動選択。音量の小さい入力は正規化（最大30倍）してから認識
+- faster-whisper が無い環境では `SpeechRecognition` の Google 認識にフォールバック
+- 認識結果・入力レベル・警告は WebSocket でフロントへ反映（録音中はレベルメーターを常時表示）
+- 初回録音時に認識モデル（約460MB）を自動ダウンロード
 
 ### AI 連携
 

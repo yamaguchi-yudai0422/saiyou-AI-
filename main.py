@@ -28,7 +28,7 @@ def config_path() -> str:
     return os.path.join(base, "config.json")
 
 
-DEFAULT_CONFIG = {"api_name": "", "api_key": "", "mic_device": None, "audio_device": None}
+DEFAULT_CONFIG = {"api_name": "", "api_key": "", "mic_device": None, "audio_device": None, "mic_gain": 1, "loopback_gain": 1}
 
 
 def load_config() -> dict:
@@ -64,6 +64,8 @@ class ConfigData(BaseModel):
     api_key: str | None = None
     mic_device: int | None = None
     audio_device: int | None = None
+    mic_gain: float | None = None
+    loopback_gain: float | None = None
 
 
 class TestData(BaseModel):
@@ -136,11 +138,19 @@ async def final_analysis(data: InterviewData):
         raise HTTPException(status_code=500, detail=f"予期しないエラーが発生しました：{e}")
 
 
+def _clamp_gain(value) -> float:
+    try:
+        return max(1.0, min(30.0, float(value)))
+    except (TypeError, ValueError):
+        return 1.0
+
+
 @app.websocket("/ws/transcribe")
-async def transcribe_ws(websocket: WebSocket, device: int = 0, mic: int | None = None, mic_speaker: str = "面接官", loopback_speaker: str = "志望者"):
+async def transcribe_ws(websocket: WebSocket, device: int = -1, mic: int | None = None, mic_speaker: str = "面接官", loopback_speaker: str = "志望者", mic_gain: float = 1.0, loopback_gain: float = 1.0):
     await websocket.accept()
 
     stop_event = asyncio.Event()
+    gain_state = {"mic": _clamp_gain(mic_gain), "loopback": _clamp_gain(loopback_gain)}
 
     async def on_result(speaker: str, text: str):
         try:
@@ -155,7 +165,25 @@ async def transcribe_ws(websocket: WebSocket, device: int = 0, mic: int | None =
             pass
         stop_event.set()
 
-    task = asyncio.create_task(run_transcription(device, on_result, stop_event, mic_device=mic, mic_speaker=mic_speaker, loopback_speaker=loopback_speaker, on_error=on_error))
+    async def on_warn(message: str):
+        try:
+            await websocket.send_json({"warn": message})
+        except Exception:
+            pass
+
+    async def on_level(levels: dict):
+        try:
+            await websocket.send_json({"level": levels})
+        except Exception:
+            pass
+
+    async def on_status(message: str):
+        try:
+            await websocket.send_json({"status": message})
+        except Exception:
+            pass
+
+    task = asyncio.create_task(run_transcription(device if device >= 0 else None, on_result, stop_event, mic_device=mic, mic_speaker=mic_speaker, loopback_speaker=loopback_speaker, on_error=on_error, on_warn=on_warn, on_level=on_level, on_status=on_status, gain_state=gain_state))
 
     try:
         while True:
@@ -163,6 +191,15 @@ async def transcribe_ws(websocket: WebSocket, device: int = 0, mic: int | None =
                 msg = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
                 if msg == "stop":
                     break
+                # 録音中のゲイン変更（{"mic_gain": 5} / {"loopback_gain": 3}）
+                try:
+                    update = json.loads(msg)
+                    if "mic_gain" in update:
+                        gain_state["mic"] = _clamp_gain(update["mic_gain"])
+                    if "loopback_gain" in update:
+                        gain_state["loopback"] = _clamp_gain(update["loopback_gain"])
+                except (ValueError, TypeError):
+                    pass
             except asyncio.TimeoutError:
                 if stop_event.is_set():
                     break

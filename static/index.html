@@ -68,6 +68,11 @@
           <select id="mic-select" class="select flex-select">
             <option value="">読み込み中...</option>
           </select>
+          <div class="gain-row">
+            <span class="gain-label">音量ブースト</span>
+            <input type="range" id="mic-gain" min="1" max="20" step="1" value="1">
+            <span class="gain-val" id="mic-gain-val">×1</span>
+          </div>
         </div>
 
         <div class="audio-source-row">
@@ -78,7 +83,12 @@
           <select id="device-select" class="select flex-select">
             <option value="">読み込み中...</option>
           </select>
-          <p class="device-hint">↑ スピーカーの「ループバック」を選択してください</p>
+          <p class="device-hint">↑ 通常は「自動」のままで OK です</p>
+          <div class="gain-row">
+            <span class="gain-label">音量ブースト</span>
+            <input type="range" id="device-gain" min="1" max="20" step="1" value="1">
+            <span class="gain-val" id="device-gain-val">×1</span>
+          </div>
         </div>
 
         <div class="voice-controls">
@@ -86,6 +96,7 @@
           <button id="voice-stop" class="btn btn-secondary hidden">録音停止</button>
         </div>
         <div id="voice-status" class="voice-status"></div>
+        <div id="level-status" class="level-status"></div>
       </div>
 
       <div class="card">
@@ -166,6 +177,11 @@
           <select id="app-mic-select" class="select flex-select">
             <option value="">読み込み中...</option>
           </select>
+          <div class="gain-row">
+            <span class="gain-label">音量ブースト</span>
+            <input type="range" id="app-mic-gain" min="1" max="20" step="1" value="1">
+            <span class="gain-val" id="app-mic-gain-val">×1</span>
+          </div>
         </div>
 
         <div class="audio-source-row">
@@ -176,7 +192,12 @@
           <select id="app-device-select" class="select flex-select">
             <option value="">読み込み中...</option>
           </select>
-          <p class="device-hint">↑ スピーカーの「ループバック」を選択してください</p>
+          <p class="device-hint">↑ 通常は「自動」のままで OK です</p>
+          <div class="gain-row">
+            <span class="gain-label">音量ブースト</span>
+            <input type="range" id="app-device-gain" min="1" max="20" step="1" value="1">
+            <span class="gain-val" id="app-device-gain-val">×1</span>
+          </div>
         </div>
 
         <div class="voice-controls">
@@ -184,6 +205,7 @@
           <button id="app-voice-stop" class="btn btn-secondary hidden">録音停止</button>
         </div>
         <div id="app-voice-status" class="voice-status"></div>
+        <div id="app-level-status" class="level-status"></div>
       </div>
 
       <div class="card">
