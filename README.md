@@ -5,6 +5,10 @@ Noesia API を使って、面接内容の記録と評価補助を行う Windows 
 
 起動時にモード選択画面を表示し、面接官モードと志望者モードを選べます。
 
+## ダウンロード
+
+[**Windows版をダウンロード（NoesiaHR v1.0.0）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.0/NoesiaHR-v1.0.0-windows.zip)
+
 ## できること
 
 - マイク音声と PC の再生音声を文字起こしして会話ログを作成
