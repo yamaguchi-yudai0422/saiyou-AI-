@@ -6,6 +6,17 @@ pyaudiowpatch>=0.2.12
 SpeechRecognition>=3.10.0
 faster-whisper>=1.0.0
 numpy>=1.26
+PyMuPDF==1.28.0
+# 履歴書画像を外部送信せず、Windows内蔵OCRで読み取る
+winrt-runtime==3.2.1
+winrt-Windows-Foundation==3.2.1
+winrt-Windows-Foundation-Collections==3.2.1
+winrt-Windows-Globalization==3.2.1
+winrt-Windows-Graphics-DirectX==3.2.1
+winrt-Windows-Graphics-Imaging==3.2.1
+winrt-Windows-Media-Ocr==3.2.1
+winrt-Windows-Storage-Streams==3.2.1
+winrt-Windows-System==3.2.1
 # NVIDIA GPU で高精度モデルを使う場合（無くても CPU で動作）
 nvidia-cublas-cu12
 nvidia-cudnn-cu12

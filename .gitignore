@@ -2,12 +2,15 @@ __pycache__/
 *.py[cod]
 
 config.json
+config.json.tmp
+.release-config-backup.json
 .env
 .venv/
 venv/
 
 build/
 dist/
+release/
 *.spec
 
 .idea/

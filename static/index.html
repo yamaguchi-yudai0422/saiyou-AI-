@@ -21,13 +21,42 @@
     </div>
   </header>
 
-  <div class="mode-tabs">
-    <button id="tab-interviewer" class="mode-tab mode-tab--active">面接官モード</button>
-    <button id="tab-applicant" class="mode-tab">志望者モード</button>
+  <section id="mode-selection" class="mode-selection" aria-labelledby="mode-selection-title">
+    <div class="mode-selection-copy">
+      <p class="mode-selection-kicker">SELECT YOUR MODE</p>
+      <h2 id="mode-selection-title">利用するモードを選んでください</h2>
+      <p>面接での立場に合わせて、記録とAI評価の内容が切り替わります。</p>
+    </div>
+    <div class="mode-choice-grid">
+      <article class="mode-choice mode-choice--available mode-choice--interviewer">
+        <div class="mode-choice-topline">
+          <span class="mode-choice-number">01</span>
+          <span class="mode-choice-state mode-choice-state--ready">利用可能</span>
+        </div>
+        <h3>面接官モード</h3>
+        <p>候補者との面接を記録し、採用判断の補助コメントを作成します。</p>
+        <button id="choose-interviewer" class="mode-choice-button mode-choice-button--primary" type="button">このモードで始める</button>
+      </article>
+      <article class="mode-choice mode-choice--available">
+        <div class="mode-choice-topline">
+          <span class="mode-choice-number">02</span>
+          <span class="mode-choice-state mode-choice-state--ready">利用可能</span>
+        </div>
+        <h3>志望者モード</h3>
+        <p>企業との会話を記録し、Noesia人格本人の目線で相性を確認します。</p>
+        <button id="choose-applicant" class="mode-choice-button mode-choice-button--primary" type="button">このモードで始める</button>
+      </article>
+    </div>
+  </section>
+
+  <div id="mode-tabs" class="mode-tabs hidden">
+    <button id="back-to-mode-selection" class="mode-back" type="button">← モード選択</button>
+    <button id="tab-interviewer" class="mode-tab" type="button">面接官モード</button>
+    <button id="tab-applicant" class="mode-tab mode-tab--active" type="button">志望者モード</button>
   </div>
 
   <!-- ── 面接官モード ──────────────────────────────────────────────────── -->
-  <div id="interviewer-mode">
+  <div id="interviewer-mode" class="hidden">
     <div class="main-grid">
 
       <div class="card">
@@ -43,9 +72,19 @@
       <div class="card">
         <div class="card-header">
           <h2 class="card-title">履歴書 <span class="card-title-sub">（任意）</span></h2>
-          <button id="paste-resume" class="btn-paste">貼り付け</button>
+          <div class="resume-actions">
+            <button id="load-resume-pdf" class="btn-paste btn-paste--pdf" type="button">PDFを読み込む</button>
+            <button id="load-resume-text" class="btn-paste" type="button">文字ファイル</button>
+            <button id="load-resume-image" class="btn-paste btn-paste--ocr" type="button">画像OCR</button>
+            <button id="paste-resume" class="btn-paste" type="button">貼り付け</button>
+          </div>
         </div>
-        <textarea id="resume" class="textarea" placeholder="受け取った履歴書をここに貼り付けてください（ない場合は空欄のままでOK）"></textarea>
+        <input id="resume-pdf-file" class="hidden" type="file" accept=".pdf,application/pdf">
+        <input id="resume-text-file" class="hidden" type="file" accept=".txt,.md,.csv,text/plain,text/csv">
+        <input id="resume-image-file" class="hidden" type="file" accept=".png,.jpg,.jpeg,.bmp,.tif,.tiff,image/png,image/jpeg,image/bmp,image/tiff" multiple>
+        <textarea id="resume" class="textarea" placeholder="PDFを読み込むか、直接入力・文字ファイル・履歴書画像・貼り付けで追加してください（ない場合は空欄でOK）"></textarea>
+        <div id="resume-import-status" class="resume-import-status" aria-live="polite"></div>
+        <p class="resume-privacy-note">PDFと画像OCRは端末内で処理します。ファイルそのものは保存・外部送信されません。</p>
       </div>
 
       <div class="card">
@@ -117,7 +156,10 @@
     </div>
 
     <div class="end-bar">
-      <button id="clear-btn" class="btn btn-secondary">入力をクリア</button>
+      <div class="clear-control">
+        <button id="clear-btn" class="btn btn-secondary">面接内容をクリア</button>
+        <span class="clear-control-note">会社情報と履歴書は残ります</span>
+      </div>
       <button id="end-btn" class="btn btn-danger">面接終了</button>
     </div>
 
@@ -136,6 +178,7 @@
           <div class="result-actions">
             <button id="copy-result" class="btn btn-secondary">結果をコピー</button>
             <button id="save-result" class="btn btn-secondary">ログと結果を保存</button>
+            <button id="clear-result" class="btn btn-secondary">Noesiaコメントをクリア</button>
           </div>
         </div>
         <div id="final-error" class="final-error hidden"></div>
@@ -164,6 +207,30 @@
           class="textarea log-textarea"
           placeholder="音声認識またはテキスト入力で会話が追加されます&#10;&#10;例）&#10;企業担当者：弊社はスピード感を大切にしています。&#10;あなた：具体的にどのくらいのサイクルで意思決定されますか？"
         ></textarea>
+      </div>
+
+      <div class="card question-card">
+        <div class="question-card-header">
+          <div>
+            <p class="question-kicker">LIVE INTERVIEW ASSIST</p>
+            <h2 class="question-title">次に聞く質問を考える</h2>
+          </div>
+          <span class="question-live-badge">録音継続</span>
+        </div>
+        <p class="question-description">
+          クリックした時点までの会話から、Noesia人格本人が志望者として企業へ聞きたい質問を1つ提案します。生成中も録音は続きます。
+        </p>
+        <button id="app-question-btn" class="btn btn-question" type="button">質問を考える</button>
+        <div id="app-question-loading" class="question-loading hidden" aria-live="polite">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span>会話から質問を考えています...</span>
+        </div>
+        <div id="app-question-result" class="question-result hidden" aria-live="polite">
+          <p class="question-result-label">次に聞く質問</p>
+          <p id="app-question-text" class="question-result-text"></p>
+          <p id="app-question-tokens" class="tokens-note"></p>
+        </div>
+        <div id="app-question-error" class="final-error hidden" role="alert"></div>
       </div>
 
       <div class="card">
@@ -226,25 +293,29 @@
     </div>
 
     <div class="end-bar">
-      <button id="app-clear-btn" class="btn btn-secondary">入力をクリア</button>
-      <button id="app-end-btn" class="btn btn-danger">終了して企業を評価する</button>
+      <div class="clear-control">
+        <button id="app-clear-btn" class="btn btn-secondary">面接内容をクリア</button>
+        <span class="clear-control-note">企業情報は残ります</span>
+      </div>
+      <button id="app-end-btn" class="btn btn-danger">Noesia なら合うか評価する</button>
     </div>
 
     <section id="app-final-section" class="final-section hidden">
       <div class="card final-card">
-        <h2 class="card-title">Noesia の企業評価</h2>
+        <h2 class="card-title">Noesia 人格本人の企業評価</h2>
         <div id="app-final-loading" class="final-loading">
           <div class="dots"><span></span><span></span><span></span></div>
-          <p>Noesia が評価しています...</p>
+          <p>Noesia が自分との相性を考えています...</p>
         </div>
         <div id="app-final-content" class="hidden">
           <div id="app-verdict-badge" class="verdict-badge"></div>
           <div id="app-final-reply" class="final-reply"></div>
           <p id="app-final-tokens" class="tokens-note"></p>
-          <p class="verdict-note">これは Noesia の人格による意見です。最終的な判断はあなた自身で行ってください。</p>
+          <p class="verdict-note">これは Noesia 人格本人が志望者として「自分なら合うか」を判断した意見です。</p>
           <div class="result-actions">
             <button id="app-copy-result" class="btn btn-secondary">結果をコピー</button>
             <button id="app-save-result" class="btn btn-secondary">ログと結果を保存</button>
+            <button id="app-clear-result" class="btn btn-secondary">Noesiaコメントをクリア</button>
           </div>
         </div>
         <div id="app-final-error" class="final-error hidden"></div>
