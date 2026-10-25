@@ -26,6 +26,7 @@ if exist "release\NoesiaHR\config.json" (
   --contents-directory "_internal" ^
   --add-data "%CD%\static;static" ^
   --collect-all "faster_whisper" ^
+  --exclude-module "onnxruntime" ^
   --collect-all "ctranslate2" ^
   --collect-all "pyaudiowpatch" ^
   --collect-all "speech_recognition" ^

@@ -4,7 +4,7 @@ Noesia API を活用して、面接の記録・質問・評価を補助する Wi
 
 ## ダウンロード
 
-[**Windows版をダウンロード（NoesiaHR v1.0.1）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.1/NoesiaHR-v1.0.1-windows.zip)
+[**Windows版をダウンロード（NoesiaHR v1.0.2）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.2/NoesiaHR-v1.0.2-windows.zip)
 
 ダウンロードした ZIP を解凍し、フォルダ内の `NoesiaHR.exe` を起動してください。
 
