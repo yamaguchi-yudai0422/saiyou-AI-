@@ -38,7 +38,9 @@ const logEl          = $('interview-log');
 const micSelect      = $('mic-select');
 const deviceSelect   = $('device-select');
 const voiceStart     = $('voice-start');
+const voiceTest      = $('voice-test');
 const voiceStop      = $('voice-stop');
+const voiceTestResult = $('voice-test-result');
 const voiceStatus    = $('voice-status');
 const levelStatus    = $('level-status');
 const speakerEl      = $('speaker');
@@ -51,7 +53,9 @@ const appConversationLog = $('app-conversation-log');
 const appMicSelect       = $('app-mic-select');
 const appDeviceSelect    = $('app-device-select');
 const appVoiceStart      = $('app-voice-start');
+const appVoiceTest       = $('app-voice-test');
 const appVoiceStop       = $('app-voice-stop');
+const appVoiceTestResult = $('app-voice-test-result');
 const appVoiceStatus     = $('app-voice-status');
 const appLevelStatus     = $('app-level-status');
 const appSpeakerEl       = $('app-speaker');
@@ -542,7 +546,7 @@ let stopPromise = null;
 let stopResolve = null;
 let stopTimer   = null;
 
-function startVoice(devSel, micSel) {
+function startVoice(devSel, micSel, test = false) {
   // 接続完了前に連打されると ws が上書きされ、止められない録音セッションが残るため入口で弾く
   if (ws || stopPromise) return;
 
@@ -552,7 +556,12 @@ function startVoice(devSel, micSel) {
     levelEl:  isInterviewer ? levelStatus : appLevelStatus,
     startBtn: isInterviewer ? voiceStart  : appVoiceStart,
     stopBtn:  isInterviewer ? voiceStop   : appVoiceStop,
+    testBtn:  isInterviewer ? voiceTest   : appVoiceTest,
+    testResult: isInterviewer ? voiceTestResult : appVoiceTestResult,
     appendFn: isInterviewer ? appendToLog : appendToAppLog,
+    test,
+    transcriptCount: 0,
+    lastTestProblem: '',
   };
 
   // ループバックデバイスが無い環境でも -1（自動）でマイクのみ録音できる
@@ -560,11 +569,19 @@ function startVoice(devSel, micSel) {
   const micSpeaker      = isInterviewer ? '面接官' : 'あなた';
   const loopbackSpeaker = isInterviewer ? '志望者' : '企業担当者';
   const micParam        = micSel.value === '' ? '' : `&mic=${micSel.value}`;
+  ui.sourceSummary = `録音元：マイク ${micSel.selectedOptions[0]?.textContent || '未選択'}／PC音声 ${devSel.selectedOptions[0]?.textContent || '未選択'}（選択した再生デバイスの全音声）`;
 
   activeUI = ui;
+  if (test) {
+    ui.testResult.classList.remove('hidden');
+    ui.testResult.textContent = `${ui.sourceSummary}\nマイクに話し、PCでも音声を再生してください。`;
+    ui.testBtn.textContent = 'テスト終了';
+  } else {
+    ui.testBtn.classList.add('hidden');
+  }
   // onopen を待たずに切り替える（待つと連打で複数セッションが立つ）
   ui.startBtn.classList.add('hidden');
-  ui.stopBtn.classList.remove('hidden');
+  ui.stopBtn.classList.toggle('hidden', test);
   ui.stopBtn.disabled     = false;
   ui.statusEl.textContent = '接続中...';
   ui.statusEl.className   = 'voice-status active';
@@ -576,7 +593,7 @@ function startVoice(devSel, micSel) {
   );
 
   ws.onopen = () => {
-    ui.statusEl.textContent = '● 録音中 — 声を自動識別しています';
+    ui.statusEl.textContent = test ? '● 音声テスト中 — 話し終えてから数秒お待ちください' : '● 録音中 — 声を自動識別しています';
     ui.statusEl.className   = 'voice-status active';
   };
 
@@ -590,16 +607,24 @@ function startVoice(devSel, micSel) {
       // 録音は継続したまま、デバイス選択ミス等のヒントを表示する
       ui.statusEl.textContent = `⚠ ${data.warn}`;
       ui.statusEl.className   = 'voice-status warn';
+      if (test) ui.lastTestProblem = data.warn;
     } else if (data.status) {
       ui.statusEl.textContent = data.status;
-      ui.statusEl.className   = 'voice-status active';
+      ui.statusEl.className   = data.status.includes('聞き取れません') || data.status.includes('失敗') ? 'voice-status warn' : 'voice-status active';
+      if (test && ui.statusEl.className === 'voice-status warn') ui.lastTestProblem = data.status;
     } else if (data.level) {
       const bar = p => '▮'.repeat(Math.min(10, Math.ceil(p / 10))).padEnd(10, '▯');
       ui.levelEl.textContent =
         `マイク ${bar(data.level.mic)} ${data.level.mic}%　` +
         `PC音声 ${bar(data.level.loopback)} ${data.level.loopback}%`;
     } else if (data.speaker && data.text) {
-      ui.appendFn(data.speaker, data.text);
+      if (test) {
+        if (!ui.transcriptCount) ui.testResult.textContent = `${ui.sourceSummary}\n`;
+        ui.testResult.textContent += `${data.speaker}：${data.text}\n`;
+        ui.transcriptCount += 1;
+      } else {
+        ui.appendFn(data.speaker, data.text);
+      }
       const head = stopPromise ? '停止処理中' : '● 録音中';
       ui.statusEl.textContent = `${head} — 最後の認識: ${data.speaker}「${data.text.slice(0, 30)}」`;
       ui.statusEl.className   = 'voice-status active';
@@ -627,6 +652,7 @@ function stopVoice() {
   const ui     = activeUI;
   if (ui) {
     ui.stopBtn.disabled     = true;
+    ui.testBtn.disabled     = true;
     ui.statusEl.textContent = '停止処理中 — 最後の発話を認識しています...';
     ui.statusEl.className   = 'voice-status active';
   }
@@ -635,7 +661,7 @@ function stopVoice() {
   // 終わった場合でも、この Promise が取り残されないようにするため
   stopPromise = new Promise(resolve => { stopResolve = resolve; });
   // サーバーが応答しないまま固まった場合の保険
-  stopTimer = setTimeout(stopRecording, 30000);
+  stopTimer = setTimeout(stopRecording, 120000);
   socket.onclose = stopRecording;
   socket.onerror = stopRecording;
   try { socket.send('stop'); } catch (_) { stopRecording(); }
@@ -644,11 +670,14 @@ function stopVoice() {
 }
 
 voiceStart.addEventListener('click',    () => startVoice(deviceSelect,    micSelect));
+voiceTest.addEventListener('click',     () => ws ? stopVoice() : startVoice(deviceSelect, micSelect, true));
 voiceStop.addEventListener('click',     () => stopVoice());
 appVoiceStart.addEventListener('click', () => startVoice(appDeviceSelect, appMicSelect));
+appVoiceTest.addEventListener('click',  () => ws ? stopVoice() : startVoice(appDeviceSelect, appMicSelect, true));
 appVoiceStop.addEventListener('click',  () => stopVoice());
 
 function stopRecording() {
+  const finishedUI = activeUI;
   clearTimeout(stopTimer);
   stopTimer = null;
   if (ws) {
@@ -670,6 +699,18 @@ function stopRecording() {
     start.classList.remove('hidden');
     stop.classList.add('hidden');
     stop.disabled = false;
+  }
+  for (const btn of [voiceTest, appVoiceTest]) {
+    btn.disabled = false;
+    btn.classList.remove('hidden');
+    btn.textContent = '音声テスト';
+  }
+  if (finishedUI?.test) {
+    finishedUI.statusEl.textContent = finishedUI.transcriptCount
+      ? `${finishedUI.transcriptCount}件の文字起こしを確認できました。`
+      : finishedUI.lastTestProblem || '音声は文字起こしされませんでした。録音元と音量を確認してください。';
+    finishedUI.statusEl.className = finishedUI.transcriptCount ? 'voice-status active' : 'voice-status warn';
+    if (!finishedUI.transcriptCount) finishedUI.testResult.textContent = `${finishedUI.sourceSummary}\n${finishedUI.statusEl.textContent}`;
   }
   if (stopResolve) {
     const resolve = stopResolve;

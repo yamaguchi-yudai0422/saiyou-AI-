@@ -180,6 +180,7 @@ body {
 .voice-status.warn   { color: #b45309; }
 .voice-status.error  { color: var(--danger); }
 .level-status { font-size: 12px; color: var(--text-muted); min-height: 18px; font-variant-numeric: tabular-nums; }
+.voice-test-result { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.6; margin: 8px 0 0; padding: 10px; border-radius: 6px; background: var(--surface-2, #f3f4f6); }
 .gain-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .gain-row input[type="range"] { flex: 1; accent-color: var(--accent, #2563eb); }
 .gain-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }

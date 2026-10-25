@@ -4,9 +4,11 @@ Noesia API を活用して、面接の記録・質問・評価を補助する Wi
 
 ## ダウンロード
 
-[**Windows版をダウンロード（NoesiaHR v1.0.0）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.0/NoesiaHR-v1.0.0-windows.zip)
+[**Windows版をダウンロード（NoesiaHR v1.0.1）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.1/NoesiaHR-v1.0.1-windows.zip)
 
 ダウンロードした ZIP を解凍し、フォルダ内の `NoesiaHR.exe` を起動してください。
+
+録音前に「音声テスト」でマイクとPC音声を確認できます。PC音声は、選択した再生デバイスから出るすべての音を拾います。音声テストの結果は面接ログに追加されません。
 
 ## はじめに
 

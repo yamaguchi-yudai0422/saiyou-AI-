@@ -300,14 +300,15 @@ async def transcribe_ws(websocket: WebSocket, device: int = -1, mic: int | None 
         # ここで即 cancel すると、無音0.8秒による発話確定を待っていた最後の一言が消える
         if connected:
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=30.0)
+                await task
             except Exception:
                 pass
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        else:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
         if connected:
             # 認識しきってから閉じる。フロントはこの close を待って停止処理を終える
             try:

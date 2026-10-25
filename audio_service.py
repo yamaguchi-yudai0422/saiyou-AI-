@@ -1,11 +1,9 @@
 import array
 import asyncio
 import collections
-import difflib
 import glob
 import os
 import queue
-import re
 import site
 import sys
 import threading
@@ -43,12 +41,10 @@ PREROLL_SEC     = 0.5   # 発話開始前に遡って含める長さ
 END_SILENCE_SEC = 0.8   # この長さ無音が続いたら発話終了
 MAX_SEGMENT_SEC = 12.0  # 1発話の最大長（長い発話は分割して随時認識）
 MIN_SPEECH_SEC  = 0.3   # これより短い音はノイズとして捨てる
-LOOPBACK_END_SILENCE_SEC = 1.15  # 音質の悪い相手音声は途切れやすいため長めにつなぐ
+LOOPBACK_END_SILENCE_SEC = 1.6  # 動画や通話音声は短い間で文を切らない
 LOOPBACK_MIN_SPEECH_SEC  = 0.15  # 短く弱い質問も相手側では認識へ回す
-
-# 認識に文脈を与えるプロンプト（同音異義語の選択が安定する）
-_INITIAL_PROMPT = "以下は、日本語の面接における丁寧な会話です。"
-_LOOPBACK_PROMPT = "以下は、日本語の面接における企業担当者の質問や説明です。"
+LOOPBACK_MAX_SEGMENT_SEC = 12.0
+LOOPBACK_OVERLAP_SEC = 0.5
 
 # 無音ノイズから Whisper が生成しがちな定型幻覚
 _HALLUCINATIONS = (
@@ -63,24 +59,6 @@ _HALLUCINATIONS = (
     "さあ行ってみましょう",
     "おやすみなさい",
 )
-
-
-def _compact_text(text: str) -> str:
-    return re.sub(r"[^0-9A-Za-zぁ-んァ-ヶ一-龠]", "", text)
-
-
-def _is_prompt_echo(text: str, prompt: str = _INITIAL_PROMPT) -> bool:
-    """低品質な音声で initial_prompt がそのまま出力される幻覚を検出する"""
-    return difflib.SequenceMatcher(None, _compact_text(text), _compact_text(prompt)).ratio() > 0.6
-
-
-def _is_hallucination(text: str, prompt: str) -> bool:
-    compact = _compact_text(text)
-    return (
-        not compact
-        or any(_compact_text(phrase) in compact for phrase in _HALLUCINATIONS)
-        or _is_prompt_echo(text, prompt)
-    )
 
 
 def _resample_audio(samples: np.ndarray, rate: int) -> np.ndarray:
@@ -142,32 +120,26 @@ def _enhance_loopback_audio(audio: np.ndarray) -> np.ndarray | None:
 
 
 def _decode_whisper(model, audio: np.ndarray, is_loopback: bool, relaxed: bool = False) -> str:
-    """既に発話分割済みなので、相手側では内蔵VADに再度捨てさせない。"""
-    prompt = _LOOPBACK_PROMPT if is_loopback else _INITIAL_PROMPT
+    """発話分割済みの音声を認識する。面接用プロンプトは動画音声を誤変換させるため使わない。"""
     if relaxed:
-        min_logprob, max_no_speech, beam_size = -1.5, 0.85, 8
+        min_logprob, beam_size = -1.5, 8
     elif is_loopback:
-        min_logprob, max_no_speech, beam_size = -1.25, 0.75, 6
+        min_logprob, beam_size = -1.25, 6
     else:
-        min_logprob, max_no_speech, beam_size = -1.0, 0.6, 5
+        min_logprob, beam_size = -1.0, 5
 
     segments, _ = model.transcribe(
         audio,
         language="ja",
         beam_size=beam_size,
-        vad_filter=not is_loopback,
+        vad_filter=False,
         condition_on_previous_text=False,
-        initial_prompt=prompt,
-        log_prob_threshold=min_logprob,
-        no_speech_threshold=max_no_speech,
-        compression_ratio_threshold=2.6 if relaxed else 2.4,
     )
-    kept = [
-        segment for segment in segments
-        if segment.avg_logprob >= min_logprob and segment.no_speech_prob <= max_no_speech
-    ]
-    text = "".join(segment.text for segment in kept).strip()
-    return "" if _is_hallucination(text, prompt) else text
+    text = "".join(segment.text for segment in segments if segment.avg_logprob >= min_logprob)
+    # 定型句の幻覚だけを除き、同じ区間で聞き取れた言葉は残す。
+    for phrase in _HALLUCINATIONS:
+        text = text.replace(phrase, "")
+    return text.strip(" 、。\t\n")
 
 
 def _setup_cuda_dlls():
@@ -253,7 +225,7 @@ class _MonoStream:
         data = self._stream.read(size, exception_on_overflow=False)
         arr  = np.frombuffer(data, dtype=np.int16)
         if self._channels > 1:
-            arr = arr[0::self._channels]
+            arr = (arr.reshape(-1, self._channels).astype(np.int32).sum(axis=1) // self._channels).astype(np.int16)
         gain = self._source.current_gain()
         if arr.size:
             # 入力ブースト（音の小さいデバイス対策）は「発話検出のしきい値」と
@@ -338,9 +310,15 @@ class _AudioSource(sr.AudioSource):
                 info = self.pa.get_device_info_by_index(self.device_index)
                 rate = int(info.get("defaultSampleRate") or RATE)
                 native_channels = max(1, int(info.get("maxInputChannels") or 1))
-                attempts.append((self.device_index, rate, 1))
-                if native_channels > 1:
+                if self.is_loopback and native_channels > 1:
+                    # PCの再生音声はステレオで取得してから合成する。
+                    # モノラルで開けても波形が崩れるデバイスがある。
                     attempts.append((self.device_index, rate, native_channels))
+                    attempts.append((self.device_index, rate, 1))
+                else:
+                    attempts.append((self.device_index, rate, 1))
+                    if native_channels > 1:
+                        attempts.append((self.device_index, rate, native_channels))
 
             last_error = None
             for dev, rate, channels in attempts:
@@ -429,17 +407,11 @@ def _capture_loop(source, speaker: str, segment_queue, stop_event: threading.Eve
             buf         = []
             speech_sec  = 0.0
             silence_sec = 0.0
-            # ノイズ床は直近8秒のピーク最小値で推定する。ブーストで常時ノイズが
-            # しきい値を超えても、発話の合間の谷から床を追従できる（EMA だと
-            # 「常にしきい値超え」の状態で床が固まり、無音判定が一切出なくなる）
-            # デジタルのPC再生音声はノイズ床が低い。低品質な通話音声も拾えるよう、
-            # 相手側だけ最小しきい値とノイズ床からのマージンを下げる。
-            base_threshold = 35 if source.is_loopback else 300
-            noise_margin   = 25 if source.is_loopback else 100
-            noise_ratio    = 1.8 if source.is_loopback else 2.5
+            # 直近ピークを基準にすると、会話が続いた場合に声自身を無音扱いする。
+            threshold      = 20 if source.is_loopback else 300
             end_silence    = LOOPBACK_END_SILENCE_SEC if source.is_loopback else END_SILENCE_SEC
             min_speech     = LOOPBACK_MIN_SPEECH_SEC if source.is_loopback else MIN_SPEECH_SEC
-            peak_history   = collections.deque(maxlen=max(1, int(8.0 / chunk_sec)))
+            max_segment    = LOOPBACK_MAX_SEGMENT_SEC if source.is_loopback else MAX_SEGMENT_SEC
 
             def flush():
                 nonlocal buf, speech_sec, silence_sec
@@ -468,9 +440,6 @@ def _capture_loop(source, speaker: str, segment_queue, stop_event: threading.Eve
                     # 波形は増幅していないので、しきい値判定の側でゲインを掛ける
                     peak     = min(32767, int(raw_peak * source.current_gain()))
 
-                    peak_history.append(peak)
-                    threshold = max(base_threshold, min(peak_history) * noise_ratio + noise_margin)
-
                     if peak > threshold:
                         if not buf:
                             buf.extend(preroll)
@@ -486,8 +455,10 @@ def _capture_loop(source, speaker: str, segment_queue, stop_event: threading.Eve
                     else:
                         preroll.append(data)
 
-                    if buf and (speech_sec + silence_sec) >= MAX_SEGMENT_SEC:
+                    if buf and len(buf) * chunk_sec >= max_segment:
+                        overlap = list(buf[-max(1, int(LOOPBACK_OVERLAP_SEC / chunk_sec)):]) if source.is_loopback else []
                         flush()
+                        preroll.extend(overlap)
             except _StreamStopped:
                 pass
             # 録音停止時、無音待ちの途中だった発話を捨てずに認識へ回す
@@ -501,7 +472,7 @@ def _capture_loop(source, speaker: str, segment_queue, stop_event: threading.Eve
             report_error(f"{speaker}側の音声デバイスを開けませんでした：{e}")
 
 
-def _whisper_worker(model, segment_queue, loop, callback, stop_event: threading.Event, on_status=None, on_warn=None):
+def _whisper_worker(model, segment_queue, loop, callback, stop_event: threading.Event, on_status=None, on_warn=None, result_futures=None):
     """stop_event が立ってもキューを空にしてから終わる。
     録音停止の直前に確定した発話を取りこぼさないため。"""
 
@@ -518,12 +489,6 @@ def _whisper_worker(model, segment_queue, loop, callback, stop_event: threading.
             if stop_event.is_set():
                 break
             continue
-        # 認識が追いつかない時は古いものから捨てて遅延がのびないようにする
-        while segment_queue.qsize() > 4:
-            try:
-                speaker, samples, rate, is_loopback = segment_queue.get_nowait()
-            except queue.Empty:
-                break
         duration = len(samples) / rate
         if duration >= 1.0:
             send_status(f"{speaker}側の音声を認識しています…")
@@ -558,7 +523,9 @@ def _whisper_worker(model, segment_queue, loop, callback, stop_event: threading.
             if duration >= 1.0:
                 send_status(f"（{speaker}側の音声を検出しましたが、言葉を聞き取れませんでした）")
             continue
-        asyncio.run_coroutine_threadsafe(callback(speaker, text), loop)
+        future = asyncio.run_coroutine_threadsafe(callback(speaker, text), loop)
+        if result_futures is not None:
+            result_futures.append(future)
 
 
 # ── Google（SpeechRecognition）経路：Whisper が使えないときのフォールバック ──
@@ -612,20 +579,15 @@ def _recognize_loop(source, speaker: str, loop, callback, on_error, stop_event: 
             report_error(f"{speaker}側の音声デバイスを開けませんでした：{e}")
 
 
-def _drain_threads(capture_threads, worker_stop, worker_thread, timeout=25.0):
+def _drain_threads(capture_threads, worker_stop, worker_thread):
     """停止時、キャプチャスレッドが最後の発話を送り終え、認識スレッドが
     キューを空にするまで待つ。ここで待たないと停止直前の発話が消える。"""
-    deadline = time.monotonic() + timeout
-
-    def remaining():
-        return max(0.1, deadline - time.monotonic())
-
     for t in capture_threads:
-        t.join(timeout=remaining())
+        t.join()
     if worker_stop is not None:
         worker_stop.set()
     if worker_thread is not None:
-        worker_thread.join(timeout=remaining())
+        worker_thread.join()
 
 
 async def run_transcription(loopback_device: int | None, on_result, stop_event: asyncio.Event, mic_device: int = None, mic_speaker: str = "面接官", loopback_speaker: str = "志望者", on_error=None, on_warn=None, on_level=None, on_status=None, gain_state: dict = None):
@@ -663,20 +625,8 @@ async def run_transcription(loopback_device: int | None, on_result, stop_event: 
     def on_loopback_open_error(source, error):
         open_failures.append(error)
 
-    # ローカルの Whisper モデルが使えればそちらを優先し、無ければ Google 認識で動かす
+    # モデル準備中から録音し、最初の発話もキューへ残す。
     engine = "whisper" if HAS_WHISPER else "google"
-    if engine == "whisper":
-        try:
-            first_load = _whisper_model is None
-            if first_load:
-                await send_status("音声認識モデルを準備しています。初回はダウンロードに数分かかることがあります…")
-            model = await loop.run_in_executor(None, _get_whisper_model)
-            if first_load:
-                await send_status("音声認識モデルの準備ができました。")
-        except Exception as e:
-            engine = "google"
-            await send_warn(f"ローカル音声認識モデルを読み込めませんでした（{e}）。Google音声認識で続行します。")
-
     # Google 認識は Recognizer が生の音量でしきい値を決めるため波形の増幅が要る。
     # Whisper は発話ごとに正規化するので、増幅すると歪むだけで得がない
     amplify          = engine == "google"
@@ -686,6 +636,7 @@ async def run_transcription(loopback_device: int | None, on_result, stop_event: 
     capture_threads = []
     worker_thread   = None
     worker_stop     = None
+    result_futures  = []
 
     if engine == "whisper":
         segment_queue = queue.Queue()
@@ -703,13 +654,38 @@ async def run_transcription(loopback_device: int | None, on_result, stop_event: 
                 kwargs={"on_open_error": on_loopback_open_error},
                 daemon=True,
             ))
-        worker_thread = threading.Thread(
-            target=_whisper_worker,
-            args=(model, segment_queue, loop, on_result, worker_stop),
-            kwargs={"on_status": on_status, "on_warn": on_warn},
-            daemon=True,
-        )
-    else:
+        for t in capture_threads:
+            t.start()
+        try:
+            first_load = _whisper_model is None
+            if first_load:
+                await send_status("音声を録音しています。認識モデルを準備中です…")
+            model = await loop.run_in_executor(None, _get_whisper_model)
+            if first_load:
+                await send_status("音声認識モデルの準備ができました。録音済みの音声も順に認識します。")
+            worker_thread = threading.Thread(
+                target=_whisper_worker,
+                args=(model, segment_queue, loop, on_result, worker_stop),
+                kwargs={"on_status": on_status, "on_warn": on_warn, "result_futures": result_futures},
+                daemon=True,
+            )
+            worker_thread.start()
+        except Exception as e:
+            thread_stop.set()
+            for t in capture_threads:
+                await loop.run_in_executor(None, t.join)
+            engine = "google"
+            thread_stop = threading.Event()
+            mic_source = _AudioSource(mic_device, stop_event=thread_stop, gain_state=gain_state, amplify=True)
+            loopback_sources = [_AudioSource(i, stop_event=thread_stop, is_loopback=True, gain_state=gain_state, amplify=True) for i in loopback_indexes]
+            mic_failed = False
+            open_failures.clear()
+            capture_threads = []
+            worker_thread = None
+            worker_stop = None
+            await send_warn(f"ローカル音声認識モデルを読み込めませんでした（{e}）。Google音声認識で続行します。")
+
+    if engine == "google":
         capture_threads.append(threading.Thread(
             target=_recognize_loop,
             args=(mic_source, mic_speaker, loop, on_result, on_error, thread_stop),
@@ -724,10 +700,8 @@ async def run_transcription(loopback_device: int | None, on_result, stop_event: 
                 daemon=True,
             ))
 
-    for t in capture_threads:
-        t.start()
-    if worker_thread is not None:
-        worker_thread.start()
+        for t in capture_threads:
+            t.start()
 
     start_time       = time.monotonic()
     mic_silent_ticks = 0
@@ -792,3 +766,8 @@ async def run_transcription(loopback_device: int | None, on_result, stop_event: 
     # 通常停止（キャンセルではない）の場合だけここに来る。
     # 停止直前の発話とキューに残った発話を認識しきってから WebSocket を閉じさせる
     await loop.run_in_executor(None, _drain_threads, capture_threads, worker_stop, worker_thread)
+    for future in result_futures:
+        try:
+            await asyncio.wrap_future(future)
+        except Exception:
+            pass
