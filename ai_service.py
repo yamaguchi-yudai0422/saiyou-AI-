@@ -89,27 +89,6 @@ async def generate_applicant_review(company_info: str, conversation_log: str, ap
     return await call_noesia_api(message, context, api_key)
 
 
-async def generate_applicant_question(company_info: str, conversation_log: str, api_key: str) -> dict:
-    context = [
-        {
-            "role": "user",
-            "content": (
-                "あなた自身が志望者として参加している面接です。\n"
-                "第三者への面接アドバイスではなく、Noesiaに設定されたあなた自身の性格・価値観から、"
-                "企業との相性を見極めるために次に聞きたいことを考えてください。\n\n"
-                f"【企業情報】\n{company_info if company_info.strip() else '（未入力）'}\n\n"
-                f"【ここまでの会話】\n{conversation_log if conversation_log.strip() else '（未入力）'}"
-            ),
-        }
-    ]
-    message = (
-        "ここまでの会話を踏まえて、あなた自身が企業担当者へ次に聞く質問を1つ考えて。"
-        "すでに回答されている内容は避けて、相性判断に役立つ具体的な質問にして。"
-        "面接でそのまま読める自然な敬語の質問文だけを出力し、見出し・理由・説明は付けないで。"
-    )
-    return await call_noesia_api(message, context, api_key, max_tokens=300)
-
-
 async def generate_final_review(company_info: str, resume: str, interview_log: str, api_key: str) -> dict:
     company_block = f"ちなみに、うちの会社についてはこんな感じ。\n{company_info}\n\n" if company_info.strip() else ""
     # 履歴書をもらわない企業もあるため、未入力なら項目ごと省いて面接内容だけで判断してもらう

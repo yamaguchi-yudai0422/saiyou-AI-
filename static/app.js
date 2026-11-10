@@ -61,12 +61,6 @@ const appLevelStatus     = $('app-level-status');
 const appSpeakerEl       = $('app-speaker');
 const appTextInputEl     = $('app-text-input');
 const appSendBtn         = $('app-send-btn');
-const appQuestionBtn     = $('app-question-btn');
-const appQuestionLoading = $('app-question-loading');
-const appQuestionResult  = $('app-question-result');
-const appQuestionText    = $('app-question-text');
-const appQuestionTokens  = $('app-question-tokens');
-const appQuestionError   = $('app-question-error');
 
 // ── Mode switching ────────────────────────────────────────────────────────
 
@@ -760,73 +754,6 @@ appTextInputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) appSendBtn.click();
 });
 
-// ── 志望者向けリアルタイム質問生成 ──────────────────────────────────────
-// 会話ログのスナップショットを通常のHTTP APIへ送るだけなので、録音WebSocketは止めない。
-
-let appQuestionRequestId = 0;
-
-function resetAppQuestion() {
-  appQuestionRequestId += 1;
-  appQuestionBtn.disabled = false;
-  appQuestionBtn.textContent = '質問を考える';
-  appQuestionLoading.classList.add('hidden');
-  appQuestionResult.classList.add('hidden');
-  appQuestionError.classList.add('hidden');
-  appQuestionText.textContent = '';
-  appQuestionTokens.textContent = '';
-}
-
-appQuestionBtn.addEventListener('click', async () => {
-  const conversationSnapshot = appConversationLog.value.trim();
-  if (!conversationSnapshot) {
-    appQuestionError.textContent = '会話ログがまだありません。録音または手動入力で会話を追加してください。';
-    appQuestionError.classList.remove('hidden');
-    appQuestionResult.classList.add('hidden');
-    return;
-  }
-
-  const requestId = ++appQuestionRequestId;
-  appQuestionBtn.disabled = true;
-  appQuestionBtn.textContent = '質問を生成中...';
-  appQuestionLoading.classList.remove('hidden');
-  appQuestionResult.classList.add('hidden');
-  appQuestionError.classList.add('hidden');
-
-  try {
-    const res = await fetch('/api/applicant/question', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        company_info: appCompanyInfo.value,
-        conversation_log: conversationSnapshot,
-      }),
-    });
-    const data = await res.json();
-    if (requestId !== appQuestionRequestId) return;
-
-    appQuestionLoading.classList.add('hidden');
-    if (!res.ok) {
-      appQuestionError.textContent = data.detail || '質問を生成できませんでした。';
-      appQuestionError.classList.remove('hidden');
-      return;
-    }
-
-    appQuestionText.textContent = data.reply || '質問を生成できませんでした。';
-    appQuestionTokens.textContent = data.tokens_used != null ? `消費トークン: ${data.tokens_used}` : '';
-    appQuestionResult.classList.remove('hidden');
-  } catch (_) {
-    if (requestId !== appQuestionRequestId) return;
-    appQuestionLoading.classList.add('hidden');
-    appQuestionError.textContent = 'サーバーに接続できませんでした。';
-    appQuestionError.classList.remove('hidden');
-  } finally {
-    if (requestId === appQuestionRequestId) {
-      appQuestionBtn.disabled = false;
-      appQuestionBtn.textContent = 'もう一度考える';
-    }
-  }
-});
-
 // ── 判定の解釈 ────────────────────────────────────────────────────────────
 // プロンプトで「最初に○○か××を一言で」と頼んでいるため、冒頭部分だけを見る。
 // 「不採用」は「採用」を含むので、否定側を先に判定する。
@@ -1142,7 +1069,6 @@ setupConfirmedClear($('app-clear-btn'), async () => {
   await stopVoice();
   appConversationLog.value = '';
   appTextInputEl.value = '';
-  resetAppQuestion();
   saveDraft();
 });
 

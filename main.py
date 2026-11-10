@@ -19,7 +19,6 @@ from pydantic import BaseModel
 from ai_service import (
     NoesiaError,
     call_noesia_api,
-    generate_applicant_question,
     generate_applicant_review,
     generate_final_review,
 )
@@ -188,22 +187,6 @@ async def applicant_final(data: ApplicantData):
         raise HTTPException(status_code=400, detail="Noesia APIキーが設定されていません。設定ボタンから入力してください。")
     try:
         return await generate_applicant_review(data.company_info, data.conversation_log, api_key)
-    except NoesiaError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"予期しないエラーが発生しました：{e}")
-
-
-@app.post("/api/applicant/question")
-async def applicant_question(data: ApplicantData):
-    config = load_config()
-    api_key = config.get("api_key", "")
-    if not api_key:
-        raise HTTPException(status_code=400, detail="Noesia APIキーが設定されていません。設定ボタンから入力してください。")
-    if not data.conversation_log.strip():
-        raise HTTPException(status_code=400, detail="質問を考えるには、会話ログが必要です。録音または手動入力で会話を追加してください。")
-    try:
-        return await generate_applicant_question(data.company_info, data.conversation_log, api_key)
     except NoesiaError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:

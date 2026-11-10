@@ -1,10 +1,10 @@
 # Noesia 採用補助AI
 
-Noesia API を活用して、面接の記録・質問・評価を補助する Windows 向けアプリです。面接の最終判断は人が行い、AI は判断材料の整理と対話をサポートします。
+Noesia API を活用して、面接の記録・評価を補助する Windows 向けアプリです。面接の最終判断は人が行い、AI は判断材料の整理をサポートします。
 
 ## ダウンロード
 
-[**Windows版をダウンロード（NoesiaHR v1.0.2）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.2/NoesiaHR-v1.0.2-windows.zip)
+[**Windows版をダウンロード（NoesiaHR v1.0.3）**](https://github.com/yamaguchi-yudai0422/saiyou-AI-/releases/download/v1.0.3/NoesiaHR-v1.0.3-windows.zip)
 
 ダウンロードした ZIP を解凍し、フォルダ内の `NoesiaHR.exe` を起動してください。
 
@@ -32,7 +32,6 @@ API キーと音声デバイスの設定は、利用する PC 内に保存され
 ### 志望者モード
 
 - Noesia で育成した AI 人格が、志望者の目線で「自分ならこの会社に合うか」を考察
-- 面接中の会話をもとに、次に聞くとよい質問をリアルタイムで提案
 - 企業と応募者の相性を多面的に考えるための補助に利用
 
 ## 動作に必要なもの
